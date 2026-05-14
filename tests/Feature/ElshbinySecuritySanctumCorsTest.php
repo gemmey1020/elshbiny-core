@@ -8,6 +8,8 @@ use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\TestCase;
@@ -73,6 +75,24 @@ class ElshbinySecuritySanctumCorsTest extends TestCase
             ->assertJsonPath('data.0.hash_id', $quote->json('data.hash_id'));
     }
 
+    public function test_sanctum_logout_revokes_current_bearer_token(): void
+    {
+        $register = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Logout Buyer',
+            'email' => 'logout@example.com',
+            'password' => 'secure-password',
+        ]);
+
+        $token = $register->json('data.access_token');
+
+        $this->withToken($token)
+            ->postJson('/api/v1/auth/logout')
+            ->assertOk()
+            ->assertJsonPath('meta.message', 'Logged out.');
+
+        $this->assertSame(0, PersonalAccessToken::query()->count());
+    }
+
     public function test_cors_uses_frontend_origin_with_credentials(): void
     {
         config([
@@ -87,6 +107,28 @@ class ElshbinySecuritySanctumCorsTest extends TestCase
             ->assertNoContent()
             ->assertHeader('Access-Control-Allow-Origin', 'https://store.elshbiny.test')
             ->assertHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
+    public function test_bearer_login_accepts_frontend_origin_without_csrf_cookie(): void
+    {
+        config([
+            'cors.allowed_origins' => ['http://127.0.0.1:3017'],
+            'cors.supports_credentials' => true,
+        ]);
+
+        $user = \App\Models\User::factory()->create([
+            'email' => 'origin-buyer@example.com',
+            'password' => Hash::make('secure-password'),
+        ]);
+
+        $this->withHeader('Origin', 'http://127.0.0.1:3017')
+            ->postJson('/api/v1/auth/login', [
+                'email' => $user->email,
+                'password' => 'secure-password',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.user.email', $user->email)
+            ->assertJsonPath('data.token_type', 'Bearer');
     }
 
     public function test_omega_pass_gate_requires_matching_secret_when_configured(): void

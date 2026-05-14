@@ -69,6 +69,17 @@ class AuthController extends Controller
         return QuoteResource::collection($quotes);
     }
 
+    public function logout(Request $request): JsonResponse
+    {
+        $request->user()?->tokens()->delete();
+
+        return response()->json([
+            'meta' => [
+                'message' => 'Logged out.',
+            ],
+        ]);
+    }
+
     private function tokenResponse(User $user, string $tokenName, int $status = 200): JsonResponse
     {
         $token = $user->createToken($tokenName)->plainTextToken;

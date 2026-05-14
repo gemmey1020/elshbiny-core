@@ -36,6 +36,25 @@ class ProductController extends Controller
         return ProductResource::collection($products);
     }
 
+    public function sync(Request $request): AnonymousResourceCollection
+    {
+        $ids = collect(explode(',', (string) $request->query('ids')))
+            ->map(fn (string $id): int => (int) trim($id))
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->take(50)
+            ->values();
+
+        $products = Product::query()
+            ->with('category')
+            ->whereIn('id', $ids)
+            ->get()
+            ->sortBy(fn (Product $product): int => $ids->search($product->id))
+            ->values();
+
+        return ProductResource::collection($products);
+    }
+
     public function show(Request $request, string $slug): JsonResponse
     {
         $product = Product::query()

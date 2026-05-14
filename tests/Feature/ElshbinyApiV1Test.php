@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\FitOutQuestion;
 use App\Models\Product;
 use App\Models\Quote;
 use App\Models\User;
@@ -86,6 +87,93 @@ class ElshbinyApiV1Test extends TestCase
             ->getJson('/api/v1/products/'.$authenticatedProduct->slug)
             ->assertOk()
             ->assertJsonPath('data.base_price', '1500.00');
+    }
+
+    public function test_fit_out_engine_exposes_active_questions_in_step_order(): void
+    {
+        FitOutQuestion::create([
+            'step' => 2,
+            'question_en' => 'What mannequin finish do you need?',
+            'question_ar' => 'ما التشطيب المطلوب؟',
+            'options' => [
+                ['label_en' => 'Matte white', 'value' => 'matte-white'],
+            ],
+        ]);
+
+        FitOutQuestion::create([
+            'step' => 1,
+            'question_en' => 'What retail zone are you fitting out?',
+            'question_ar' => 'ما منطقة العرض؟',
+            'options' => [
+                [
+                    'label_en' => 'Window display',
+                    'label_ar' => 'واجهة المحل',
+                    'value' => 'window',
+                    'description_en' => 'Front-facing display zone.',
+                    'description_ar' => 'منطقة العرض اللي بتشد العميل من بره.',
+                ],
+            ],
+        ]);
+
+        FitOutQuestion::create([
+            'step' => 3,
+            'question_en' => 'Inactive question',
+            'question_ar' => 'سؤال غير مفعل',
+            'options' => [],
+            'is_active' => false,
+        ]);
+
+        $this->getJson('/api/v1/fit-out-engine')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.step', 1)
+            ->assertJsonPath('data.0.question_ar', 'ما منطقة العرض؟')
+            ->assertJsonPath('data.0.options.0.value', 'window')
+            ->assertJsonPath('data.0.options.0.label_ar', 'واجهة المحل')
+            ->assertJsonPath('data.0.options.0.description_ar', 'منطقة العرض اللي بتشد العميل من بره.')
+            ->assertJsonPath('data.1.step', 2);
+    }
+
+    public function test_product_sync_returns_fresh_products_by_ids_with_gated_pricing(): void
+    {
+        $user = User::factory()->create();
+        $category = Category::create([
+            'name_en' => 'Mannequins',
+            'name_ar' => 'مانيكانات',
+            'slug' => 'mannequins',
+        ]);
+
+        $publicProduct = Product::create([
+            'category_id' => $category->id,
+            'name_en' => 'Public Price Mannequin',
+            'name_ar' => 'مانيكان بسعر عام',
+            'slug' => 'public-price-mannequin',
+            'sku' => 'ESH-MAN-SYNC-001',
+            'base_price' => 900,
+            'technical_specs' => ['material' => 'fiberglass'],
+        ]);
+
+        $authenticatedProduct = Product::create([
+            'category_id' => $category->id,
+            'name_en' => 'Private Price Mannequin',
+            'name_ar' => 'مانيكان بسعر خاص',
+            'slug' => 'private-price-mannequin',
+            'sku' => 'ESH-MAN-SYNC-002',
+            'base_price' => 1400,
+            'price_visibility' => 'authenticated',
+        ]);
+
+        $this->getJson('/api/v1/products/sync?ids='.$authenticatedProduct->id.','.$publicProduct->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $authenticatedProduct->id)
+            ->assertJsonPath('data.0.base_price', null)
+            ->assertJsonPath('data.1.id', $publicProduct->id)
+            ->assertJsonPath('data.1.base_price', '900.00');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products/sync?ids='.$authenticatedProduct->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.base_price', '1400.00');
     }
 
     public function test_quote_generation_creates_hash_items_and_public_lookup(): void
