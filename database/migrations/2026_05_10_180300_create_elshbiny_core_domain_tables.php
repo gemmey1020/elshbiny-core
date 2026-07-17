@@ -30,7 +30,7 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->string('sku')->unique();
             $table->decimal('base_price', 10, 2)->nullable();
-            $table->enum('price_visibility', ['public', 'authenticated', 'hidden'])->default('public')->index();
+            $table->enum('price_visibility', ['public', 'authenticated', 'hidden'])->default('authenticated')->index();
             $table->json('technical_specs')->nullable();
             $table->boolean('is_active')->default(true)->index();
             $table->softDeletes();
@@ -41,7 +41,7 @@ return new class extends Migration
             $table->id();
             $table->string('hash_id', 6)->unique();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
-            $table->enum('status', ['pending', 'contacted', 'won', 'lost'])->default('pending')->index();
+            $table->enum('status', ['pending', 'contacted', 'won', 'lost', 'cancelled'])->default('pending')->index();
             $table->string('customer_name')->nullable();
             $table->string('customer_phone')->nullable();
             $table->string('customer_email')->nullable();

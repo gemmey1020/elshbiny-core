@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Product;
 use App\Models\Quote;
+use App\Models\QuoteLog;
 use App\Models\User;
 use Illuminate\Support\Arr;
 
@@ -38,6 +39,15 @@ class QuoteService
                 'technical_specs_snapshot' => $product->technical_specs,
             ]);
         }
+
+        QuoteLog::create([
+            'quote_id' => $quote->id,
+            'user_id' => $user?->id,
+            'actor_type' => $user ? 'buyer' : 'public',
+            'field' => 'status',
+            'old_value' => null,
+            'new_value' => Quote::STATUS_PENDING,
+        ]);
 
         return $quote->load(['items.product.category', 'user']);
     }

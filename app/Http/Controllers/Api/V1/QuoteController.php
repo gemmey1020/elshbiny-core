@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\QuoteResource;
 use App\Models\Quote;
+use App\Models\QuoteLog;
 use App\Services\QuoteService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Symfony\Component\HttpFoundation\Response;
 
 class QuoteController extends Controller
 {
@@ -47,5 +49,36 @@ class QuoteController extends Controller
             ->firstOrFail();
 
         return new QuoteResource($quote);
+    }
+
+    public function cancel(Request $request, string $hash): JsonResource
+    {
+        $quote = Quote::query()
+            ->with(['items.product.category', 'user'])
+            ->where('hash_id', $hash)
+            ->whereBelongsTo($request->user())
+            ->firstOrFail();
+
+        if ($quote->status !== Quote::STATUS_PENDING) {
+            abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'Only pending quotes can be cancelled.');
+        }
+
+        $oldStatus = $quote->status;
+        $quote->forceFill(['status' => Quote::STATUS_CANCELLED])->save();
+
+        QuoteLog::create([
+            'quote_id' => $quote->id,
+            'user_id' => $request->user()->id,
+            'actor_type' => 'buyer',
+            'field' => 'status',
+            'old_value' => $oldStatus,
+            'new_value' => Quote::STATUS_CANCELLED,
+        ]);
+
+        return (new QuoteResource($quote->refresh()->load(['items.product.category', 'user'])))->additional([
+            'meta' => [
+                'message' => 'Quote cancelled.',
+            ],
+        ]);
     }
 }

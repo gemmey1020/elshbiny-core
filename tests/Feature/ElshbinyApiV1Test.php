@@ -7,6 +7,7 @@ use App\Models\FitOutQuestion;
 use App\Models\Product;
 use App\Models\Quote;
 use App\Models\User;
+use App\Services\CatalogCsvImportService;
 use App\Services\QuoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -45,8 +46,13 @@ class ElshbinyApiV1Test extends TestCase
         $this->getJson('/api/v1/products?material=fiberglass')
             ->assertOk()
             ->assertJsonPath('data.0.slug', 'female-display-mannequin')
-            ->assertJsonPath('data.0.base_price', '1000.00')
+            ->assertJsonPath('data.0.base_price', null)
             ->assertJsonPath('data.0.media.tiny_float_url', null);
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->getJson('/api/v1/products?material=fiberglass')
+            ->assertOk()
+            ->assertJsonPath('data.0.base_price', '1000.00');
     }
 
     public function test_product_detail_applies_gated_pricing_and_cross_sell(): void
@@ -150,6 +156,7 @@ class ElshbinyApiV1Test extends TestCase
             'slug' => 'public-price-mannequin',
             'sku' => 'ESH-MAN-SYNC-001',
             'base_price' => 900,
+            'price_visibility' => 'public',
             'technical_specs' => ['material' => 'fiberglass'],
         ]);
 
@@ -168,12 +175,13 @@ class ElshbinyApiV1Test extends TestCase
             ->assertJsonPath('data.0.id', $authenticatedProduct->id)
             ->assertJsonPath('data.0.base_price', null)
             ->assertJsonPath('data.1.id', $publicProduct->id)
-            ->assertJsonPath('data.1.base_price', '900.00');
+            ->assertJsonPath('data.1.base_price', null);
 
         $this->actingAs($user, 'sanctum')
-            ->getJson('/api/v1/products/sync?ids='.$authenticatedProduct->id)
+            ->getJson('/api/v1/products/sync?ids='.$authenticatedProduct->id.','.$publicProduct->id)
             ->assertOk()
-            ->assertJsonPath('data.0.base_price', '1400.00');
+            ->assertJsonPath('data.0.base_price', '1400.00')
+            ->assertJsonPath('data.1.base_price', '900.00');
     }
 
     public function test_quote_generation_creates_hash_items_and_public_lookup(): void
@@ -229,7 +237,111 @@ class ElshbinyApiV1Test extends TestCase
         $this->getJson('/api/v1/quote/'.$hash)
             ->assertOk()
             ->assertJsonPath('data.hash_id', $hash)
-            ->assertJsonPath('data.quote_url', url('/quote/'.$hash));
+            ->assertJsonPath('data.quote_url', rtrim(trim(explode(',', env('FRONTEND_URL', ''))[0] ?? '') ?: url('/'), '/').'/quote/'.$hash);
+
+        $this->assertDatabaseHas('quote_logs', [
+            'quote_id' => Quote::where('hash_id', $hash)->value('id'),
+            'user_id' => $user->id,
+            'actor_type' => 'buyer',
+            'field' => 'status',
+            'new_value' => 'pending',
+        ]);
+    }
+
+    public function test_buyer_profile_update_and_quote_cancel_rules(): void
+    {
+        $buyer = User::factory()->create(['role' => User::ROLE_BUYER]);
+        $otherBuyer = User::factory()->create(['role' => User::ROLE_BUYER]);
+
+        $quote = Quote::create([
+            'hash_id' => 'CAN123',
+            'user_id' => $buyer->id,
+            'status' => Quote::STATUS_PENDING,
+        ]);
+
+        $this->actingAs($buyer, 'sanctum')
+            ->patchJson('/api/v1/auth/profile', [
+                'phone' => '+201000000000',
+                'company_name' => null,
+                'address' => 'Cairo',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.phone', '+201000000000')
+            ->assertJsonPath('data.role', User::ROLE_BUYER);
+
+        $this->actingAs($otherBuyer, 'sanctum')
+            ->postJson('/api/v1/quote/'.$quote->hash_id.'/cancel')
+            ->assertNotFound();
+
+        $this->actingAs($buyer, 'sanctum')
+            ->postJson('/api/v1/quote/'.$quote->hash_id.'/cancel')
+            ->assertOk()
+            ->assertJsonPath('data.status', Quote::STATUS_CANCELLED);
+
+        $this->assertDatabaseHas('quote_logs', [
+            'quote_id' => $quote->id,
+            'user_id' => $buyer->id,
+            'actor_type' => 'buyer',
+            'old_value' => Quote::STATUS_PENDING,
+            'new_value' => Quote::STATUS_CANCELLED,
+        ]);
+
+        $this->actingAs($buyer, 'sanctum')
+            ->postJson('/api/v1/quote/'.$quote->hash_id.'/cancel')
+            ->assertUnprocessable();
+    }
+
+    public function test_contact_request_is_stored_before_whatsapp_handoff(): void
+    {
+        $this->postJson('/api/v1/contact-requests', [
+            'name' => 'Retail Buyer',
+            'phone' => '+201000000000',
+            'company' => 'Demo Store',
+            'message' => 'Need mannequins.',
+            'interest_type' => 'store_setup',
+            'source_page' => 'contact',
+            'utm_source' => 'test',
+        ])->assertCreated()
+            ->assertJsonPath('data.status', 'new');
+
+        $this->assertDatabaseHas('consultations', [
+            'name' => 'Retail Buyer',
+            'phone' => '+201000000000',
+            'company' => 'Demo Store',
+            'interest_type' => 'store_setup',
+            'source_page' => 'contact',
+            'utm_source' => 'test',
+        ]);
+    }
+
+    public function test_catalog_csv_import_creates_updates_and_reports_failures(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'elshbiny-import-');
+        file_put_contents($path, implode(',', CatalogCsvImportService::TEMPLATE_HEADERS).PHP_EOL
+            .'واجهات,رجالي,Windows,Men,مانيكان رجالي,Window Male,SKU-001,1200,true,7,,,fiberglass,185cm,matte'.PHP_EOL
+            .'واجهات,رجالي,Windows,Men,مانيكان رجالي محدث,Window Male Updated,SKU-001,1300,false,8,,,fiberglass,186cm,gloss'.PHP_EOL
+            .'واجهات,,Windows,,منتج بدون كود,, ,900,true,1,,,wood,,'.PHP_EOL);
+
+        $report = app(CatalogCsvImportService::class)->import($path);
+
+        $this->assertSame(2, $report['success']);
+        $this->assertSame(1, $report['created']);
+        $this->assertSame(1, $report['updated']);
+        $this->assertSame(1, $report['failed']);
+
+        $this->assertDatabaseHas('categories', [
+            'name_ar' => 'رجالي',
+        ]);
+        $this->assertDatabaseHas('products', [
+            'sku' => 'SKU-001',
+            'name_ar' => 'مانيكان رجالي محدث',
+            'base_price' => '1300.00',
+            'price_visibility' => 'authenticated',
+            'is_active' => false,
+            'sort_order' => 8,
+        ]);
+
+        @unlink($path);
     }
 
     public function test_quote_generation_rejects_honeypot_payloads(): void

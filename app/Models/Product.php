@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 use Laravel\Scout\Searchable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
@@ -29,6 +30,7 @@ class Product extends Model implements HasMedia
         'name_ar',
         'slug',
         'sku',
+        'sort_order',
         'base_price',
         'price_visibility',
         'technical_specs',
@@ -36,7 +38,8 @@ class Product extends Model implements HasMedia
     ];
 
     protected $attributes = [
-        'price_visibility' => 'public',
+        'price_visibility' => 'authenticated',
+        'sort_order' => 0,
         'is_active' => true,
     ];
 
@@ -44,9 +47,25 @@ class Product extends Model implements HasMedia
     {
         return [
             'base_price' => 'decimal:2',
+            'sort_order' => 'integer',
             'technical_specs' => 'array',
             'is_active' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Product $product): void {
+            if (blank($product->name_en)) {
+                $product->name_en = $product->name_ar;
+            }
+
+            if (blank($product->slug)) {
+                $base = $product->sku ?: $product->name_en;
+                $slug = Str::slug($base);
+                $product->slug = $slug !== '' ? $slug : 'product-'.substr(md5($product->name_ar.$product->sku), 0, 8);
+            }
+        });
     }
 
     public function category(): BelongsTo
@@ -107,9 +126,11 @@ class Product extends Model implements HasMedia
             'category_id' => (int) $this->category_id,
             'category_slug' => $this->category?->slug,
             'category_name_en' => $this->category?->name_en,
+            'category_name_ar' => $this->category?->name_ar,
             'price_visibility' => $this->price_visibility,
             'base_price' => $this->base_price !== null ? (float) $this->base_price : null,
             'is_active' => (bool) $this->is_active,
+            'sort_order' => (int) $this->sort_order,
             'spec_material' => $specs['material'] ?? null,
             'spec_gender' => $specs['gender'] ?? null,
             'spec_pose' => $specs['pose'] ?? null,

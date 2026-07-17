@@ -14,7 +14,8 @@ class CategoryController extends Controller
         $categories = Category::query()
             ->where('is_active', true)
             ->withCount('products')
-            ->orderBy('name_en')
+            ->orderBy('sort_order')
+            ->orderBy('name_ar')
             ->get();
 
         return CategoryResource::collection($categories);

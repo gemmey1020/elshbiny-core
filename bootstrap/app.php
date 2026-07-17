@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/v1/auth/login',
             'api/v1/auth/logout',
             'api/v1/quote/generate',
+            'api/v1/quote/*/cancel',
+            'api/v1/contact-requests',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

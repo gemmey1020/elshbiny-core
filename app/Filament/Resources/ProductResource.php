@@ -3,12 +3,14 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Models\Category;
 use App\Models\Product;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class ProductResource extends Resource
 {
@@ -18,6 +20,16 @@ class ProductResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-cube';
 
+    public static function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -25,24 +37,28 @@ class ProductResource extends Resource
                 Forms\Components\Section::make('Catalog')
                     ->schema([
                         Forms\Components\Select::make('category_id')
-                            ->relationship('category', 'name_en')
+                            ->options(fn () => Category::query()->orderBy('sort_order')->orderBy('name_ar')->pluck('name_ar', 'id'))
                             ->searchable()
                             ->preload()
                             ->required(),
                         Forms\Components\TextInput::make('name_en')
-                            ->required()
+                            ->helperText('Optional. If left empty, Arabic name is reused internally.')
                             ->maxLength(255),
                         Forms\Components\TextInput::make('name_ar')
                             ->required()
                             ->maxLength(255),
                         Forms\Components\TextInput::make('slug')
-                            ->required()
+                            ->helperText('Optional. Generated automatically if left empty.')
                             ->maxLength(255)
                             ->unique(ignoreRecord: true),
                         Forms\Components\TextInput::make('sku')
                             ->required()
                             ->maxLength(255)
                             ->unique(ignoreRecord: true),
+                        Forms\Components\TextInput::make('sort_order')
+                            ->numeric()
+                            ->default(0)
+                            ->required(),
                     ])
                     ->columns(2),
                 Forms\Components\Section::make('Pricing')
@@ -56,6 +72,7 @@ class ProductResource extends Resource
                                 'authenticated' => 'Authenticated',
                                 'hidden' => 'Hidden',
                             ])
+                            ->default('authenticated')
                             ->required(),
                         Forms\Components\Toggle::make('is_active')
                             ->required(),
@@ -87,6 +104,9 @@ class ProductResource extends Resource
                 Tables\Columns\TextColumn::make('sku')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('category.name_en')
+                    ->label('Category')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('sort_order')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('base_price')
                     ->money('EGP')
@@ -102,7 +122,7 @@ class ProductResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('category')
-                    ->relationship('category', 'name_en'),
+                    ->relationship('category', 'name_ar'),
                 Tables\Filters\SelectFilter::make('price_visibility')
                     ->options([
                         'public' => 'Public',
@@ -113,11 +133,6 @@ class ProductResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 

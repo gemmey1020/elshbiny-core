@@ -30,7 +30,8 @@ class ProductController extends Controller
             ->when($request->filled('pose'), function ($query) use ($request): void {
                 $query->where('technical_specs->pose', $request->string('pose'));
             })
-            ->orderBy('name_en')
+            ->orderBy('sort_order')
+            ->orderBy('name_ar')
             ->paginate($perPage);
 
         return ProductResource::collection($products);

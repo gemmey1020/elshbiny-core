@@ -17,6 +17,11 @@ class Consultation extends Model
         'email',
         'company',
         'message',
+        'interest_type',
+        'source_page',
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
         'status',
     ];
 

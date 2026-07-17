@@ -21,6 +21,7 @@ class ProductResource extends JsonResource
             'name_ar' => $this->name_ar,
             'slug' => $this->slug,
             'sku' => $this->sku,
+            'sort_order' => $this->sort_order,
             'base_price' => $this->visiblePrice(),
             'price_visibility' => $this->price_visibility,
             'technical_specs' => $this->technical_specs,
@@ -37,8 +38,7 @@ class ProductResource extends JsonResource
     private function visiblePrice(): ?string
     {
         $canSeePrice = match ($this->price_visibility) {
-            'public' => true,
-            'authenticated' => auth('sanctum')->check(),
+            'public', 'authenticated' => auth('sanctum')->check(),
             'hidden' => false,
             default => false,
         };

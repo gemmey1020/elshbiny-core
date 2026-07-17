@@ -27,6 +27,7 @@ class AuthController extends Controller
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => $validated['password'],
+            'role' => User::ROLE_BUYER,
         ]);
 
         return $this->tokenResponse($user, $validated['token_name'] ?? 'elshbiny-b2b', 201);
@@ -69,6 +70,25 @@ class AuthController extends Controller
         return QuoteResource::collection($quotes);
     }
 
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'phone' => ['nullable', 'string', 'max:255'],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $user = $request->user();
+        $user->update($validated);
+
+        return response()->json([
+            'data' => $this->userPayload($user->refresh()),
+            'meta' => [
+                'message' => 'Profile updated.',
+            ],
+        ]);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $request->user()?->tokens()->delete();
@@ -94,7 +114,7 @@ class AuthController extends Controller
     }
 
     /**
-     * @return array{id:int,name:string,email:string}
+     * @return array{id:int,name:string,email:string,role:string,phone:?string,company_name:?string,address:?string}
      */
     private function userPayload(User $user): array
     {
@@ -102,6 +122,10 @@ class AuthController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'role' => $user->role,
+            'phone' => $user->phone,
+            'company_name' => $user->company_name,
+            'address' => $user->address,
         ];
     }
 }

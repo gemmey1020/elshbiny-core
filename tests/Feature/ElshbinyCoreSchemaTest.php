@@ -21,12 +21,21 @@ class ElshbinyCoreSchemaTest extends TestCase
     {
         $this->assertTrue(Schema::hasTable('categories'));
         $this->assertTrue(Schema::hasColumns('categories', [
+            'parent_id',
             'name_en',
             'name_ar',
             'slug',
+            'sort_order',
             'description_en',
             'description_ar',
             'is_active',
+        ]));
+
+        $this->assertTrue(Schema::hasColumns('users', [
+            'role',
+            'phone',
+            'company_name',
+            'address',
         ]));
 
         $this->assertTrue(Schema::hasTable('products'));
@@ -36,6 +45,7 @@ class ElshbinyCoreSchemaTest extends TestCase
             'name_ar',
             'slug',
             'sku',
+            'sort_order',
             'base_price',
             'price_visibility',
             'technical_specs',
@@ -69,6 +79,23 @@ class ElshbinyCoreSchemaTest extends TestCase
 
         $this->assertTrue(Schema::hasTable('fit_out_questions'));
         $this->assertTrue(Schema::hasTable('consultations'));
+        $this->assertTrue(Schema::hasColumns('consultations', [
+            'interest_type',
+            'source_page',
+            'utm_source',
+            'utm_medium',
+            'utm_campaign',
+        ]));
+        $this->assertTrue(Schema::hasTable('quote_logs'));
+        $this->assertTrue(Schema::hasColumns('quote_logs', [
+            'quote_id',
+            'user_id',
+            'actor_type',
+            'field',
+            'old_value',
+            'new_value',
+            'created_at',
+        ]));
     }
 
     public function test_core_models_casts_relationships_and_soft_deletes_work(): void
